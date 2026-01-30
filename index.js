@@ -31,6 +31,60 @@ async function run() {
       .db("Royal-Cases")
       .collection("policeStations");
     const CompanyCollections = client.db("Royal-Cases").collection("companies");
+    const AllCasesCollections = client.db("Royal-Cases").collection("all-cases");
+
+    // Add Cases
+    app.post("/add-cases", async (req, res) => {
+  try {
+    const {
+      fileNo,
+      caseNo,
+      date,
+      company,
+      firstParty,
+      secondParty,
+      appointedBy,
+      caseType,
+      court,
+      policeStation,
+      fixedFor,
+      mobileNo,
+      lawSection,
+      comments,
+    } = req.body;
+
+    if (!fileNo || !caseNo || !court || !firstParty || !date) {
+      return res.status(400).json({
+        error: "Required fields are missing.",
+      });
+    }
+
+    const existingCase = await AllCasesCollections.findOne({ fileNo, caseNo, court });
+
+    if (existingCase) {
+      return res.status(400).json({
+        error: "This case already exists.",
+      });
+    }
+
+    const newCase = {
+      ...req.body,
+      status: "Pending",
+      createdAt: new Date(),
+    };
+
+    const result = await AllCasesCollections.insertOne(newCase);
+
+    res.status(201).json({
+      message: "Case added successfully!",
+      data: result,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 
     // Courts Section
     app.post("/courts", async (req, res) => {
