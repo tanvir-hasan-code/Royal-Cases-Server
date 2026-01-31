@@ -31,60 +31,168 @@ async function run() {
       .db("Royal-Cases")
       .collection("policeStations");
     const CompanyCollections = client.db("Royal-Cases").collection("companies");
-    const AllCasesCollections = client.db("Royal-Cases").collection("all-cases");
+    const AllCasesCollections = client
+      .db("Royal-Cases")
+      .collection("all-cases");
 
     // Add Cases
     app.post("/add-cases", async (req, res) => {
-  try {
-    const {
-      fileNo,
-      caseNo,
-      date,
-      company,
-      firstParty,
-      secondParty,
-      appointedBy,
-      caseType,
-      court,
-      policeStation,
-      fixedFor,
-      mobileNo,
-      lawSection,
-      comments,
-    } = req.body;
+      try {
+        const {
+          fileNo,
+          caseNo,
+          date,
+          company,
+          firstParty,
+          secondParty,
+          appointedBy,
+          caseType,
+          court,
+          policeStation,
+          fixedFor,
+          mobileNo,
+          lawSection,
+          comments,
+        } = req.body;
 
-    if (!fileNo || !caseNo || !court || !firstParty || !date) {
-      return res.status(400).json({
-        error: "Required fields are missing.",
-      });
-    }
+        if (!fileNo || !caseNo || !court || !firstParty || !date) {
+          return res.status(400).json({
+            error: "Required fields are missing.",
+          });
+        }
 
-    const existingCase = await AllCasesCollections.findOne({ fileNo, caseNo, court });
+        const existingCase = await AllCasesCollections.findOne({
+          fileNo,
+          caseNo,
+          court,
+        });
 
-    if (existingCase) {
-      return res.status(400).json({
-        error: "This case already exists.",
-      });
-    }
+        if (existingCase) {
+          return res.status(400).json({
+            error: "This case already exists.",
+          });
+        }
 
-    const newCase = {
-      ...req.body,
-      status: "Pending",
-      createdAt: new Date(),
-    };
+        const newCase = {
+          ...req.body,
+          status: "Pending",
+          createdAt: new Date(),
+        };
 
-    const result = await AllCasesCollections.insertOne(newCase);
+        const result = await AllCasesCollections.insertOne(newCase);
 
-    res.status(201).json({
-      message: "Case added successfully!",
-      data: result,
+        res.status(201).json({
+          message: "Case added successfully!",
+          data: result,
+        });
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+      }
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
 
+    // All Cases
+    app.get("/cases", async (req, res) => {
+      try {
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 8;
+        const search = req.query.search || "";
+
+        // Base query
+        const query = search
+          ? { caseNo: { $regex: search, $options: "i" } }
+          : {};
+
+        const statusOrder = { Pending: 1, Running: 2, Completed: 3 };
+
+        let cases = await AllCasesCollections.find(query).toArray();
+        cases.sort((a, b) => {
+          const statusDiff =
+            (statusOrder[a.status] || 4) - (statusOrder[b.status] || 4);
+          if (statusDiff !== 0) return statusDiff;
+
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        });
+
+        // Pagination
+        const total = cases.length;
+        const paginatedCases = cases.slice((page - 1) * limit, page * limit);
+
+        res.send({
+          cases: paginatedCases,
+          total,
+          totalPages: Math.ceil(total / limit),
+          currentPage: page,
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    // Running Cases 
+
+    // Update Case (Status / Other fields)
+    app.patch("/cases/:id", async (req, res) => {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      try {
+        const result = await AllCasesCollections.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: updateData,
+          },
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "Case not found",
+          });
+        }
+
+        res.json({
+          success: true,
+          message: "Case updated successfully",
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({
+          success: false,
+          message: "Failed to update case",
+        });
+      }
+    });
+
+    // Delete Case
+    app.delete("/cases/:id", async (req, res) => {
+      const { id } = req.params;
+
+      try {
+        const result = await AllCasesCollections.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        if (result.deletedCount === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "Case not found",
+          });
+        }
+
+        res.json({
+          success: true,
+          message: "Case deleted successfully",
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({
+          success: false,
+          message: "Failed to delete case",
+        });
+      }
+    });
 
     // Courts Section
     app.post("/courts", async (req, res) => {
