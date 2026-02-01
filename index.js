@@ -91,6 +91,134 @@ async function run() {
       }
     });
 
+    // Dashboard Count Cases
+    // ==================== Dashboard Counts API ====================
+
+    // All Cases Count
+    app.get("/dashboard/all-cases-count", async (req, res) => {
+      try {
+        const count = await AllCasesCollections.countDocuments();
+        res.send({ count });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    // Running Cases Count
+    app.get("/dashboard/running-cases-count", async (req, res) => {
+      try {
+        const count = await AllCasesCollections.countDocuments({
+          status: "Running",
+        });
+        res.send({ count });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    // Completed Cases Count
+    app.get("/dashboard/completed-cases-count", async (req, res) => {
+      try {
+        const count = await AllCasesCollections.countDocuments({
+          status: "Completed",
+        });
+        res.send({ count });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    // Not Updated / Pending Cases Count
+    app.get("/dashboard/pending-cases-count", async (req, res) => {
+      try {
+        const count = await AllCasesCollections.countDocuments({
+          status: "Pending",
+        });
+        res.send({ count });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    // Today's Cases Count
+    // ==================== Today's Cases Count API ====================
+    app.get("/dashboard/todays-cases-count", async (req, res) => {
+      try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+
+        const count = await AllCasesCollections.countDocuments({
+          date: { $gte: today, $lt: tomorrow },
+        });
+
+        res.send({ count });
+      } catch (err) {
+        console.error("Error fetching today's cases count:", err);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    // Tomorrow's Cases Count
+    app.get("/dashboard/tomorrows-cases-count", async (req, res) => {
+      try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+        const dayAfterTomorrow = new Date(today);
+        dayAfterTomorrow.setDate(today.getDate() + 2);
+
+        const count = await AllCasesCollections.countDocuments({
+          date: { $gte: tomorrow, $lt: dayAfterTomorrow },
+        });
+
+        res.send({ count });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    // All Notes Count (cases with comments)
+    app.get("/dashboard/all-notes-count", async (req, res) => {
+      try {
+        const count = await AllCasesCollections.countDocuments({
+          comments: { $ne: "" },
+        });
+        res.send({ count });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    // Today's Notes Count (comments added today)
+    app.get("/dashboard/todays-notes-count", async (req, res) => {
+      try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+
+        const count = await AllCasesCollections.countDocuments({
+          comments: { $ne: "" },
+          createdAt: { $gte: today, $lt: tomorrow },
+        });
+
+        res.send({ count });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
     // All Cases
     app.get("/cases", async (req, res) => {
       try {
