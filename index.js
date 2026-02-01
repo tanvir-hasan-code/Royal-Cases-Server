@@ -130,7 +130,44 @@ async function run() {
       }
     });
 
-    // Running Cases 
+    // Running Cases
+    // GET /running-cases?page=1&limit=8&search=...
+    app.get("/running-cases", async (req, res) => {
+      try {
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 8;
+        const search = req.query.search || "";
+
+        // Base query
+        const query = {
+          status: "Running", // only running cases
+        };
+
+        if (search) {
+          query.caseNo = { $regex: search, $options: "i" }; // case-insensitive search
+        }
+
+        // Count total filtered documents
+        const total = await AllCasesCollections.countDocuments(query);
+
+        // Fetch paginated data
+        const cases = await AllCasesCollections.find(query)
+          .sort({ createdAt: -1 }) // newest first
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .toArray();
+
+        res.send({
+          cases,
+          total,
+          totalPages: Math.ceil(total / limit),
+          currentPage: page,
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
 
     // Update Case (Status / Other fields)
     app.patch("/cases/:id", async (req, res) => {
@@ -160,6 +197,57 @@ async function run() {
         console.error(error);
         res.status(500).json({
           success: false,
+          message: "Failed to update case",
+        });
+      }
+    });
+
+    // Update Case API
+    app.put("/update-case/:id", async (req, res) => {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const requiredFields = [
+        "fileNo",
+        "caseNo",
+        "date",
+        "court",
+        "firstParty",
+      ];
+
+      for (const field of requiredFields) {
+        if (!updateData[field] || updateData[field].trim() === "") {
+          return res.status(400).json({
+            field,
+            message: `${field} is required`,
+          });
+        }
+      }
+
+      try {
+        const result = await AllCasesCollections.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updateData },
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({
+            message: "Case not found",
+          });
+        }
+
+        if (result.modifiedCount === 0) {
+          return res.status(200).json({
+            message: "No changes were made",
+          });
+        }
+
+        return res.status(200).json({
+          message: "Case updated successfully!",
+        });
+      } catch (error) {
+        console.error(error);
+        return res.status(500).json({
           message: "Failed to update case",
         });
       }
