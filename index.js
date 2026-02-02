@@ -34,6 +34,7 @@ async function run() {
     const AllCasesCollections = client
       .db("Royal-Cases")
       .collection("all-cases");
+    const DailyNotesCollection = client.db("Royal-Cases").collection("notes");
 
     // Add Cases
     app.post("/add-cases", async (req, res) => {
@@ -217,6 +218,45 @@ async function run() {
         console.error(err);
         res.status(500).send({ message: "Server error" });
       }
+    });
+
+    // Notes Post API
+    app.post("/daily-notes", async (req, res) => {
+      try {
+        const note = {
+          ...req.body,
+          createdAt: new Date(),
+        };
+
+        const result = await DailyNotesCollection.insertOne(note);
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to save note" });
+      }
+    });
+    // GET
+    app.get("/daily-notes", async (req, res) => {
+      const result = await DailyNotesCollection.find()
+        .sort({ date: -1 })
+        .toArray();
+      res.send(result);
+    });
+
+    // DELETE
+    app.delete("/daily-notes/:id", async (req, res) => {
+      const result = await DailyNotesCollection.deleteOne({
+        _id: new ObjectId(req.params.id),
+      });
+      res.send(result);
+    });
+
+    // UPDATE
+    app.patch("/daily-notes/:id", async (req, res) => {
+      const result = await DailyNotesCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { note: req.body.note } },
+      );
+      res.send(result);
     });
 
     // All Cases
