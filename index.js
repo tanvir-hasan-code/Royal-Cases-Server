@@ -76,6 +76,7 @@ async function run() {
 
         const newCase = {
           ...req.body,
+          date: new Date(req.body.date),
           status: "Pending",
           createdAt: new Date(),
         };
@@ -145,77 +146,80 @@ async function run() {
       }
     });
 
-    // Today's Cases Count
-    // ==================== Today's Cases Count API ====================
     app.get("/dashboard/todays-cases-count", async (req, res) => {
       try {
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        today.setHours(0, 0, 0, 0); // আজকের শুরু (00:00)
 
         const tomorrow = new Date(today);
-        tomorrow.setDate(today.getDate() + 1);
+        tomorrow.setDate(today.getDate() + 1); // আগামীকালের শুরু
 
         const count = await AllCasesCollections.countDocuments({
-          date: { $gte: today, $lt: tomorrow },
+          date: {
+            $gte: today,
+            $lt: tomorrow,
+          },
         });
 
         res.send({ count });
       } catch (err) {
-        console.error("Error fetching today's cases count:", err);
+        console.error("Today's cases count error:", err);
         res.status(500).send({ message: "Server error" });
       }
     });
 
-    // Tomorrow's Cases Count
     app.get("/dashboard/tomorrows-cases-count", async (req, res) => {
       try {
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        today.setHours(0, 0, 0, 0); // আজ শুরু
+
         const tomorrow = new Date(today);
-        tomorrow.setDate(today.getDate() + 1);
+        tomorrow.setDate(today.getDate() + 1); // কাল শুরু
+
         const dayAfterTomorrow = new Date(today);
-        dayAfterTomorrow.setDate(today.getDate() + 2);
+        dayAfterTomorrow.setDate(today.getDate() + 2); // পরশু শুরু
 
         const count = await AllCasesCollections.countDocuments({
-          date: { $gte: tomorrow, $lt: dayAfterTomorrow },
+          date: {
+            $gte: tomorrow,
+            $lt: dayAfterTomorrow,
+          },
         });
 
         res.send({ count });
       } catch (err) {
-        console.error(err);
+        console.error("Tomorrow's cases count error:", err);
         res.status(500).send({ message: "Server error" });
       }
     });
 
-    // All Notes Count (cases with comments)
+    // ==================== All Notes Count ====================
     app.get("/dashboard/all-notes-count", async (req, res) => {
       try {
-        const count = await AllCasesCollections.countDocuments({
-          comments: { $ne: "" },
-        });
+        const count = await DailyNotesCollection.countDocuments();
         res.send({ count });
       } catch (err) {
-        console.error(err);
+        console.error("Error fetching all notes count:", err);
         res.status(500).send({ message: "Server error" });
       }
     });
 
-    // Today's Notes Count (comments added today)
+    // ==================== Today's Notes Count ====================
     app.get("/dashboard/todays-notes-count", async (req, res) => {
       try {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
+
         const tomorrow = new Date(today);
         tomorrow.setDate(today.getDate() + 1);
 
-        const count = await AllCasesCollections.countDocuments({
-          comments: { $ne: "" },
+        const count = await DailyNotesCollection.countDocuments({
           createdAt: { $gte: today, $lt: tomorrow },
         });
 
         res.send({ count });
       } catch (err) {
-        console.error(err);
+        console.error("Error fetching today's notes count:", err);
         res.status(500).send({ message: "Server error" });
       }
     });
@@ -297,8 +301,6 @@ async function run() {
         res.status(500).send({ message: "Server error" });
       }
     });
-
-    // Running Cases
     // GET /running-cases?page=1&limit=8&search=...
     app.get("/running-cases", async (req, res) => {
       try {
@@ -321,6 +323,42 @@ async function run() {
         // Fetch paginated data
         const cases = await AllCasesCollections.find(query)
           .sort({ createdAt: -1 }) // newest first
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .toArray();
+
+        res.send({
+          cases,
+          total,
+          totalPages: Math.ceil(total / limit),
+          currentPage: page,
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+    app.get("/complete-cases", async (req, res) => {
+      try {
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 8;
+        const search = req.query.search || "";
+
+        
+        const query = {
+          status: "Completed", 
+        };
+
+        if (search) {
+          query.caseNo = { $regex: search, $options: "i" }; 
+        }
+
+       
+        const total = await AllCasesCollections.countDocuments(query);
+
+       
+        const cases = await AllCasesCollections.find(query)
+          .sort({ createdAt: -1 }) 
           .skip((page - 1) * limit)
           .limit(limit)
           .toArray();
