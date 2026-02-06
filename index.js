@@ -146,6 +146,41 @@ async function run() {
       }
     });
 
+    // Pending Cases API
+    app.get("/cases/pending", async (req, res) => {
+      try {
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 8;
+        const search = req.query.search || "";
+
+        const query = {
+          status: "Pending",
+        };
+
+        if (search) {
+          query.caseNo = { $regex: search, $options: "i" };
+        }
+
+        const total = await AllCasesCollections.countDocuments(query);
+
+        const cases = await AllCasesCollections.find(query)
+          .sort({ createdAt: -1 }) // latest first
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .toArray();
+
+        res.send({
+          cases,
+          total,
+          totalPages: Math.ceil(total / limit),
+          currentPage: page,
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
     app.get("/dashboard/todays-cases-count", async (req, res) => {
       try {
         const today = new Date();
@@ -168,16 +203,98 @@ async function run() {
       }
     });
 
+    // Todays Case API
+    app.get("/cases/today", async (req, res) => {
+      try {
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 8;
+        const search = req.query.search || "";
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+        const query = {
+          date: { $gte: today, $lt: tomorrow },
+        };
+        if (search) {
+          query.caseNo = { $regex: search, $options: "i" };
+        }
+        const total = await AllCasesCollections.countDocuments(query);
+        const cases = await AllCasesCollections.find(query)
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .toArray();
+        res.send({
+          cases,
+          total,
+          totalPages: Math.ceil(total / limit),
+          currentPage: page,
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+    // Tomorrow Cases API
+    app.get("/cases/tomorrow", async (req, res) => {
+      try {
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 8;
+        const search = req.query.search || "";
+
+        // Today 00:00
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Tomorrow 00:00
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+
+        // Day after tomorrow 00:00
+        const dayAfterTomorrow = new Date(tomorrow);
+        dayAfterTomorrow.setDate(tomorrow.getDate() + 1);
+
+        const query = {
+          date: { $gte: tomorrow, $lt: dayAfterTomorrow },
+        };
+
+        if (search) {
+          query.caseNo = { $regex: search, $options: "i" };
+        }
+
+        const total = await AllCasesCollections.countDocuments(query);
+
+        const cases = await AllCasesCollections.find(query)
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .toArray();
+
+        res.send({
+          cases,
+          total,
+          totalPages: Math.ceil(total / limit),
+          currentPage: page,
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
     app.get("/dashboard/tomorrows-cases-count", async (req, res) => {
       try {
         const today = new Date();
-        today.setHours(0, 0, 0, 0); // আজ শুরু
+        today.setHours(0, 0, 0, 0);
 
         const tomorrow = new Date(today);
-        tomorrow.setDate(today.getDate() + 1); // কাল শুরু
+        tomorrow.setDate(today.getDate() + 1);
 
         const dayAfterTomorrow = new Date(today);
-        dayAfterTomorrow.setDate(today.getDate() + 2); // পরশু শুরু
+        dayAfterTomorrow.setDate(today.getDate() + 2);
 
         const count = await AllCasesCollections.countDocuments({
           date: {
@@ -267,26 +384,49 @@ async function run() {
     app.get("/cases", async (req, res) => {
       try {
         const page = Number(req.query.page) || 1;
-        const limit = Number(req.query.limit) || 8;
-        const search = req.query.search || "";
+        const limit = Number(req.query.limit) || 10;
+        const search = req.query.search?.trim() || "";
+        const company = req.query.company?.trim() || "";
+        const startDate = req.query.startDate;
+        const endDate = req.query.endDate;
 
-        // Base query
-        const query = search
-          ? { caseNo: { $regex: search, $options: "i" } }
-          : {};
+        const query = {};
+
+        // Company filter
+        if (company) query.company = company;
+
+        // Text search in multiple fields
+        if (search) {
+          query.$or = [
+            { caseNo: { $regex: search, $options: "i" } },
+            { policeStation: { $regex: search, $options: "i" } },
+            { comments: { $regex: search, $options: "i" } },
+            { firstParty: { $regex: search, $options: "i" } },
+            { secondParty: { $regex: search, $options: "i" } },
+            { status: { $regex: search, $options: "i" } },
+            { lawSection: { $regex: search, $options: "i" } },
+          ];
+        }
+
+        // Date range filter on `date` array
+        if (startDate || endDate) {
+          query.date = {};
+          if (startDate) query.date.$gte = new Date(startDate);
+          if (endDate) query.date.$lte = new Date(endDate);
+        }
 
         const statusOrder = { Pending: 1, Running: 2, Completed: 3 };
 
         let cases = await AllCasesCollections.find(query).toArray();
+
+        // Sorting
         cases.sort((a, b) => {
           const statusDiff =
             (statusOrder[a.status] || 4) - (statusOrder[b.status] || 4);
           if (statusDiff !== 0) return statusDiff;
-
           return new Date(b.createdAt) - new Date(a.createdAt);
         });
 
-        // Pagination
         const total = cases.length;
         const paginatedCases = cases.slice((page - 1) * limit, page * limit);
 
@@ -301,7 +441,112 @@ async function run() {
         res.status(500).send({ message: "Server error" });
       }
     });
-    // GET /running-cases?page=1&limit=8&search=...
+
+    app.get("/cases/:id", async (req, res) => {
+      const { id } = req.params;
+      const query = { _id: new ObjectId(id) };
+      const result = await AllCasesCollections.findOne(query);
+      res.send(result);
+    });
+    // Update Case Details (description, laws, fees)
+    app.put("/cases/:id", async (req, res) => {
+      const { id } = req.params;
+      const { description, laws, fees } = req.body;
+
+      if (!ObjectId.isValid(id)) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid Case ID" });
+      }
+
+      try {
+        const updateData = {};
+
+        if (description !== undefined) updateData.description = description;
+        if (laws !== undefined) updateData.laws = laws;
+        if (fees !== undefined) {
+          // Ensure fees.payable is a number
+          updateData.fees = {
+            payable: Number(fees.payable) || 0,
+            paid: fees.paid ? Number(fees.paid) : 0, // keep existing paid if needed
+          };
+        }
+
+        const result = await AllCasesCollections.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updateData },
+        );
+
+        if (result.matchedCount === 0) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Case not found" });
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: "Case details updated successfully",
+        });
+      } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to update case details",
+        });
+      }
+    });
+
+    app.patch("/cases/add-date/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { date, fixedFor } = req.body;
+
+        if (!date || !fixedFor) {
+          return res
+            .status(400)
+            .send({ message: "date and fixedFor required" });
+        }
+
+        const query = { _id: new ObjectId(id) };
+        const existingCase = await AllCasesCollections.findOne(query);
+
+        if (!existingCase) {
+          return res.status(404).send({ message: "Case not found" });
+        }
+
+        // Ensure `date` is an array
+        let updatedDates = [];
+        if (Array.isArray(existingCase.date)) {
+          updatedDates = existingCase.date;
+        } else if (existingCase.date) {
+          updatedDates = [existingCase.date]; // convert single date to array
+        }
+
+        // Ensure `fixedFor` is an array
+        let updatedFixedFor = [];
+        if (Array.isArray(existingCase.fixedFor)) {
+          updatedFixedFor = existingCase.fixedFor;
+        } else if (existingCase.fixedFor) {
+          updatedFixedFor = [existingCase.fixedFor]; // convert single fixedFor to array
+        }
+
+        // Push new values
+        updatedDates.push(new Date(date));
+        updatedFixedFor.push(fixedFor);
+
+        const updateResult = await AllCasesCollections.findOneAndUpdate(
+          query,
+          { $set: { date: updatedDates, fixedFor: updatedFixedFor } },
+          { returnDocument: "after" }, // return updated document
+        );
+
+        res.send(updateResult.value);
+      } catch (error) {
+        console.error("Add date error:", error);
+        res.status(500).send({ message: "Failed to add date" });
+      }
+    });
+
     app.get("/running-cases", async (req, res) => {
       try {
         const page = Number(req.query.page) || 1;
@@ -310,11 +555,11 @@ async function run() {
 
         // Base query
         const query = {
-          status: "Running", // only running cases
+          status: "Running",
         };
 
         if (search) {
-          query.caseNo = { $regex: search, $options: "i" }; // case-insensitive search
+          query.caseNo = { $regex: search, $options: "i" };
         }
 
         // Count total filtered documents
@@ -344,21 +589,18 @@ async function run() {
         const limit = Number(req.query.limit) || 8;
         const search = req.query.search || "";
 
-        
         const query = {
-          status: "Completed", 
+          status: "Completed",
         };
 
         if (search) {
-          query.caseNo = { $regex: search, $options: "i" }; 
+          query.caseNo = { $regex: search, $options: "i" };
         }
 
-       
         const total = await AllCasesCollections.countDocuments(query);
 
-       
         const cases = await AllCasesCollections.find(query)
-          .sort({ createdAt: -1 }) 
+          .sort({ createdAt: -1 })
           .skip((page - 1) * limit)
           .limit(limit)
           .toArray();
@@ -431,6 +673,9 @@ async function run() {
       }
 
       try {
+        if (updateData.date) {
+          updateData.date = new Date(updateData.date + "T00:00:00.000Z");
+        }
         const result = await AllCasesCollections.updateOne(
           { _id: new ObjectId(id) },
           { $set: updateData },
